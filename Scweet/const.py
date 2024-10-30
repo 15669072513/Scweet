@@ -21,6 +21,11 @@ def get_email(env):
     return load_env_variable("SCWEET_EMAIL", none_allowed=True)
 
 
+def get_firefox_driver_path(env):
+    dotenv.load_dotenv(env, verbose=True)
+    return load_env_variable("FIREFOX_DRIVER_PATH", none_allowed=True)
+
+
 def get_password(env):
     dotenv.load_dotenv(env, verbose=True)
     return load_env_variable("SCWEET_PASSWORD", none_allowed=True)

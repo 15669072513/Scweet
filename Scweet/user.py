@@ -1,3 +1,5 @@
+from Scweet.utils import init_driver, log_in
+
 from . import utils
 from time import sleep
 import random
@@ -95,8 +97,39 @@ def log_user_page(user, driver, headless=True):
     sleep(random.uniform(1, 2))
 
 
+def get_two_level_follower_following(users, env, headless=True, wait=2):
+    driver = init_driver(headless=headless, env=env, firefox=True)
+    sleep(wait)
+    log_in(driver, env, wait=wait)
+    sleep(wait)
+    file_follower_following_path = 'outputs/' + str(users[0]) + '_' + str(users[-1]) + '_' + 'followers_following.json'
+    file_follower_path = 'outputs/' + str(users[0]) + '_' + str(users[-1]) + '_' + 'followers.json'
+    with open(file_follower_path, 'r') as f:
+        user_followers = json.load(f)
+
+    with open(file_follower_following_path, 'r') as f:
+        two_level_follower_old = json.load(f)
+
+    for user, followers in user_followers.items():
+        for follower in followers:
+            if follower in two_level_follower_old[user]:
+                print(follower+"'s following exist,skip")
+                continue
+            following = utils.get_users_follow(driver, [follower], headless, env, "following", verbose=1,
+                                               wait=wait)
+            print(follower + "'s following:" + str(following))
+            two_level_follower_old[user][follower] = following.get(follower)
+            with open(file_follower_following_path, 'w') as f:
+                json.dump(two_level_follower_old, f)
+                f.close()
+
+
 def get_users_followers(users, env, verbose=1, headless=True, wait=2, limit=float('inf'), file_path=None):
-    followers = utils.get_users_follow(users, headless, env, "followers", verbose, wait=wait, limit=limit)
+    driver = init_driver(headless=headless, env=env, firefox=True)
+    sleep(wait)
+    log_in(driver, env, wait=wait)
+    sleep(wait)
+    followers = utils.get_users_follow(driver, users, headless, env, "followers", verbose, wait=wait, limit=limit)
 
     if file_path == None:
         file_path = 'outputs/' + str(users[0]) + '_' + str(users[-1]) + '_' + 'followers.json'
@@ -109,7 +142,11 @@ def get_users_followers(users, env, verbose=1, headless=True, wait=2, limit=floa
 
 
 def get_users_following(users, env, verbose=1, headless=True, wait=2, limit=float('inf'), file_path=None):
-    following = utils.get_users_follow(users, headless, env, "following", verbose, wait=wait, limit=limit)
+    driver = init_driver(headless=headless, env=env, firefox=True)
+    sleep(wait)
+    log_in(driver, env, wait=wait)
+    sleep(wait)
+    following = utils.get_users_follow(driver, users, headless, env, "following", verbose, wait=wait, limit=limit)
 
     if file_path == None:
         file_path = 'outputs/' + str(users[0]) + '_' + str(users[-1]) + '_' + 'following.json'

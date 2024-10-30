@@ -20,8 +20,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from . import const
 import urllib
+from selenium.webdriver.chrome.service import Service
 
-from .const import get_username, get_password, get_email
+from .const import get_username, get_password, get_email, get_firefox_driver_path
 
 
 # current_dir = pathlib.Path(__file__).parent.absolute()
@@ -73,7 +74,8 @@ def get_data(card, save_images=False, save_dir=None):
         like_cnt = 0
 
     try:
-        elements = card.find_elements(by=By.XPATH, value='.//div[2]/div[2]//img[contains(@src, "https://pbs.twimg.com/")]')
+        elements = card.find_elements(by=By.XPATH,
+                                      value='.//div[2]/div[2]//img[contains(@src, "https://pbs.twimg.com/")]')
         for element in elements:
             image_links.append(element.get_attribute('src'))
     except:
@@ -127,6 +129,11 @@ def init_driver(headless=True, proxy=None, show_images=False, option=None, firef
     if firefox:
         options = FirefoxOptions()
         driver_path = geckodriver_autoinstaller.install()
+        # driver_path = get_firefox_driver_path(env)
+        # if driver_path:
+        #     print("Firefox已经安装")
+        # else:
+        #     driver_path = geckodriver_autoinstaller.install()
     else:
         options = ChromeOptions()
         driver_path = chromedriver_autoinstaller.install()
@@ -147,10 +154,11 @@ def init_driver(headless=True, proxy=None, show_images=False, option=None, firef
     if option is not None:
         options.add_argument(option)
 
+    service = Service(executable_path=driver_path)
     if firefox:
-        driver = webdriver.Firefox(options=options, executable_path=driver_path)
+        driver = webdriver.Firefox(options=options, service=service)
     else:
-        driver = webdriver.Chrome(options=options, executable_path=driver_path)
+        driver = webdriver.Chrome(options=options, service=service)
 
     driver.set_page_load_timeout(100)
     return driver
@@ -237,7 +245,7 @@ def log_in(driver, env, timeout=20, wait=4):
     username = get_username(env)  # const.USERNAME
 
     driver.get('https://twitter.com/i/flow/login')
-
+    sleep(10)
     email_xpath = '//input[@autocomplete="username"]'
     password_xpath = '//input[@autocomplete="current-password"]'
     username_xpath = '//input[@data-testid="ocfEnterTextTextInput"]'
@@ -280,7 +288,8 @@ def keep_scroling(driver, data, writer, tweet_ids, scrolling, tweet_parsed, limi
     while scrolling and tweet_parsed < limit:
         sleep(random.uniform(0.5, 1.5))
         # get the card of tweets
-        page_cards = driver.find_elements(by=By.XPATH, value='//article[@data-testid="tweet"]')  # changed div by article
+        page_cards = driver.find_elements(by=By.XPATH,
+                                          value='//article[@data-testid="tweet"]')  # changed div by article
         for card in page_cards:
             tweet = get_data(card, save_images, save_images_dir)
             if tweet:
@@ -317,38 +326,15 @@ def keep_scroling(driver, data, writer, tweet_ids, scrolling, tweet_parsed, limi
     return driver, data, writer, tweet_ids, scrolling, tweet_parsed, scroll, last_position
 
 
-def get_users_follow(users, headless, env, follow=None, verbose=1, wait=2, limit=float('inf')):
+def get_users_follow(driver, users, headless, env, follow=None, verbose=1, wait=2, limit=float('inf')):
     """ get the following or followers of a list of users """
 
-    # initiate the driver
-    driver = init_driver(headless=headless, env=env, firefox=True)
-    sleep(wait)
-    # log in (the .env file should contain the username and password)
-    # driver.get('https://www.twitter.com/login')
-    log_in(driver, env, wait=wait)
-    sleep(wait)
-    # followers and following dict of each user
     follows_users = {}
 
     for user in users:
-        # if the login fails, find the new log in button and log in again.
-        if check_exists_by_link_text("Log in", driver):
-            print("Login failed. Retry...")
-            login = driver.find_element_by_link_text("Log in")
-            sleep(random.uniform(wait - 0.5, wait + 0.5))
-            driver.execute_script("arguments[0].click();", login)
-            sleep(random.uniform(wait - 0.5, wait + 0.5))
-            sleep(wait)
-            log_in(driver, env)
-            sleep(wait)
-        # case 2
-        if check_exists_by_xpath('//input[@name="session[username_or_email]"]', driver):
-            print("Login failed. Retry...")
-            sleep(wait)
-            log_in(driver, env)
-            sleep(wait)
-        print("Crawling " + user + " " + follow)
-        driver.get('https://twitter.com/' + user + '/' + follow)
+        url = 'https://x.com/' + user + '/' + follow
+        print("Crawling " + url)
+        driver.get(url)
         sleep(random.uniform(wait - 0.5, wait + 0.5))
         # check if we must keep scrolling
         scrolling = True
@@ -356,32 +342,27 @@ def get_users_follow(users, headless, env, follow=None, verbose=1, wait=2, limit
         follows_elem = []
         follow_ids = set()
         is_limit = False
+        scroll_page_now = 2000
+
         while scrolling and not is_limit:
-            # get the card of following or followers
-            # this is the primaryColumn attribute that contains both followings and followers
-            primaryColumn = driver.find_element(by=By.XPATH, value='//div[contains(@data-testid,"primaryColumn")]')
-            # extract only the Usercell
-            page_cards = primaryColumn.find_elements(by=By.XPATH, value='//div[contains(@data-testid,"UserCell")]')
-            for card in page_cards:
-                # get the following or followers element
-                element = card.find_element(by=By.XPATH, value='.//div[1]/div[1]/div[1]//a[1]')
-                follow_elem = element.get_attribute('href')
-                # append to the list
-                follow_id = str(follow_elem)
-                follow_elem = '@' + str(follow_elem).split('/')[-1]
-                if follow_id not in follow_ids:
-                    follow_ids.add(follow_id)
-                    follows_elem.append(follow_elem)
-                if len(follows_elem) >= limit:
-                    is_limit = True
+            # extract only the cellInnerDiv
+            elements = (driver.find_element(by=By.XPATH, value='//div[@data-testid="primaryColumn"]')
+                        .find_elements(by=By.XPATH, value='//div[@data-testid="cellInnerDiv"]'))
+            for element in elements:
+                elementTextArr = element.text.split("\n")
+                for elementText in elementTextArr:
+                    if not elementText.startswith("@"):
+                        continue
+                    if elementText not in follow_ids:
+                        print(follow+":" + elementText)
+                        follow_ids.add(elementText)
+                        follows_elem.append(elementText)
                     break
-                if verbose:
-                    print(follow_elem)
-            print("Found " + str(len(follows_elem)) + " " + follow)
+            # 原来的代码完毕
             scroll_attempt = 0
             while not is_limit:
-                sleep(random.uniform(wait - 0.5, wait + 0.5))
-                driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+                # sleep(random.uniform(wait - 0.5, wait + 0.5))
+                driver.execute_script('window.scrollTo(0, ' + str(scroll_page_now) + ');')
                 sleep(random.uniform(wait - 0.5, wait + 0.5))
                 curr_position = driver.execute_script("return window.pageYOffset;")
                 if last_position == curr_position:
@@ -394,10 +375,11 @@ def get_users_follow(users, headless, env, follow=None, verbose=1, wait=2, limit
                         sleep(random.uniform(wait - 0.5, wait + 0.5))  # attempt another scroll
                 else:
                     last_position = curr_position
+                    # each 3000 height
+                    scroll_page_now += 2000
                     break
 
         follows_users[user] = follows_elem
-
     return follows_users
 
 
